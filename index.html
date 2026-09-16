@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>University Studio Management</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col font-sans">
+
+    <!-- TOP APP BAR -->
+    <header class="bg-indigo-900 text-white shadow-md sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center h-16">
+            <div class="flex items-center space-x-3">
+                <div
+                    class="w-9 h-9 rounded-xl bg-indigo-500/30 flex items-center justify-center border border-indigo-400/30">
+                    <i class="fa-solid fa-video text-lg text-indigo-200"></i>
+                </div>
+                <div>
+                    <h1 class="text-base sm:text-lg font-bold tracking-wide leading-none">UniStudio Portal</h1>
+                    <p class="text-[11px] text-indigo-300 mt-0.5">Recording Studio & Slot Management</p>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-3">
+                <div id="syncPill"
+                    class="hidden items-center space-x-1.5 px-2.5 py-1 rounded-full bg-indigo-950/70 text-indigo-200 text-xs font-mono border border-indigo-700/50">
+                    <i class="fa-solid fa-rotate animate-spin text-[10px]"></i>
+                    <span>Syncing...</span>
+                </div>
+
+                <button onclick="openAttireModal()"
+                    class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow transition flex items-center gap-1.5 portal-faculty-btn">
+                    <i class="fa-solid fa-wand-magic-sparkles text-amber-300"></i>
+                    <span class="hidden sm:inline">Chroma & Attire Check</span>
+                </button>
+
+                <div id="headerAuthSection" class="hidden flex items-center space-x-3">
+                    <div class="text-right hidden sm:block">
+                        <div id="loggedInUserLabel" class="text-xs font-bold">User</div>
+                        <span id="loggedInRoleBadge"
+                            class="text-[10px] bg-indigo-950 text-indigo-200 px-2 py-0.5 rounded font-mono uppercase">Role</span>
+                    </div>
+                    <button onclick="logout()"
+                        class="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition flex items-center">
+                        <i class="fa-solid fa-right-from-bracket mr-1.5"></i>Logout
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div id="statusBanner"
+        class="hidden text-white text-xs font-semibold py-2 px-4 text-center transition-all duration-300"></div>
+
+    <!-- 0. LOGIN SCREEN -->
+    <div id="view-login" class="hidden flex-1 flex items-center justify-center p-4">
+        <div class="max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200 shadow-xl space-y-6">
+            <div class="text-center space-y-2">
+                <div
+                    class="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-2xl mx-auto flex items-center justify-center text-2xl shadow-inner">
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+                <h2 class="text-2xl font-black text-slate-800">Studio Portal Login</h2>
+                <p class="text-xs text-slate-500">Enter your credentials to access your dashboard</p>
+            </div>
+
+            <form id="loginForm" onsubmit="handleLogin(event)" class="space-y-4">
+                <div>
+                    <label class="form-label">Username</label>
+                    <div class="relative">
+                        <i class="fa-solid fa-user absolute left-3.5 top-3 text-slate-400"></i>
+                        <input type="text" id="loginUsername" required placeholder="admin or username"
+                            class="form-input pl-10" />
+                    </div>
+                </div>
+                <div>
+                    <label class="form-label">Password</label>
+                    <div class="relative">
+                        <i class="fa-solid fa-key absolute left-3.5 top-3 text-slate-400"></i>
+                        <input type="password" id="loginPassword" required placeholder="••••••••"
+                            class="form-input pl-10" />
+                    </div>
+                </div>
+                <div id="loginError"
+                    class="hidden text-xs bg-rose-50 border border-rose-200 text-rose-700 p-3 rounded-xl font-medium">
+                </div>
+                <button type="submit" class="w-full btn-primary justify-center py-3 text-sm">
+                    <i class="fa-solid fa-arrow-right-to-bracket mr-2"></i>Sign In
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- MAIN APP CONTAINER -->
+    <main id="appContent" class="hidden flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+
+        <!-- ==================== 1. ADMIN PANEL ==================== -->
+        <section id="panel-admin" class="hidden space-y-6">
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="stat-card">
+                    <span class="text-xs uppercase tracking-wider text-slate-400 font-bold">Total Studios</span>
+                    <p id="stat-studios" class="text-2xl sm:text-3xl font-black text-slate-800 mt-1">0</p>
+                </div>
+                <div class="stat-card">
+                    <span class="text-xs uppercase tracking-wider text-slate-400 font-bold">Pending Approval</span>
+                    <p id="stat-pending" class="text-2xl sm:text-3xl font-black text-amber-600 mt-1">0</p>
+                </div>
+                <div class="stat-card">
+                    <span class="text-xs uppercase tracking-wider text-slate-400 font-bold">Completed Today</span>
+                    <p id="stat-completed" class="text-2xl sm:text-3xl font-black text-emerald-600 mt-1">0</p>
+                </div>
+                <div class="stat-card">
+                    <span class="text-xs uppercase tracking-wider text-slate-400 font-bold">Total Recorded
+                        (Today)</span>
+                    <p id="stat-duration" class="text-2xl sm:text-3xl font-black text-purple-700 mt-1">0 m</p>
+                </div>
+            </div>
+
+            <div class="border-b border-slate-200 overflow-x-auto">
+                <nav class="flex space-x-6 min-w-max">
+                    <button onclick="switchAdminTab('live')" id="adminTabBtn-live" class="admin-tab active">
+                        <i class="fa-solid fa-tower-broadcast mr-1.5 text-rose-500 animate-pulse"></i>Live Studio Board
+                    </button>
+                    <button onclick="switchAdminTab('bookings')" id="adminTabBtn-bookings" class="admin-tab">Bookings &
+                        Schedule</button>
+                    <button onclick="switchAdminTab('audit')" id="adminTabBtn-audit" class="admin-tab">Non-Recorded &
+                        Remarks</button>
+                    <button onclick="switchAdminTab('studios')" id="adminTabBtn-studios"
+                        class="admin-tab">Studios</button>
+                    <button onclick="switchAdminTab('operators')" id="adminTabBtn-operators"
+                        class="admin-tab">Incharges</button>
+                    <button onclick="switchAdminTab('faculty')" id="adminTabBtn-faculty" class="admin-tab">Faculty
+                        Registry</button>
+                </nav>
+            </div>
+
+            <!-- TAB: LIVE BOARD -->
+            <div id="adminTab-live" class="admin-tab-content space-y-4">
+                <div
+                    class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white p-4 rounded-2xl border border-slate-200">
+                    <div>
+                        <h2 class="text-base font-bold text-slate-800">Real-Time Studio Queue Status</h2>
+                        <p class="text-xs text-slate-500">Live operational monitor: In-Progress, Queued, Overdue, and
+                            Completed slots</p>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <input type="date" id="adminLiveDate" onchange="renderLiveStudioBoard()"
+                            class="form-input text-xs w-36" />
+                        <button onclick="triggerUniversalExport('admin')" class="btn-success text-xs py-2">
+                            <i class="fa-solid fa-file-excel mr-1"></i>Export Schedule
+                        </button>
+                    </div>
+                </div>
+                <div id="liveStudiosContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+            </div>
+
+            <!-- TAB: BOOKINGS & APPROVALS -->
+            <div id="adminTab-bookings" class="admin-tab-content hidden space-y-4">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-base font-bold text-slate-800">Booking Management</h2>
+                    <div class="flex items-center space-x-2">
+                        <select id="filterBookingStatus" onchange="renderAdminBookings()"
+                            class="form-input text-xs w-44">
+                            <option value="All">All Statuses</option>
+                            <option value="Pending">Pending Approval</option>
+                            <option value="Approved">Approved</option>
+                            <option value="In-Progress">In-Progress</option>
+                            <option value="Completed">Completed</option>
+                            <option value="Not-Recorded">Not-Recorded</option>
+                            <option value="Rejected">Rejected</option>
+                        </select>
+                        <button onclick="triggerUniversalExport('admin')" class="btn-success text-xs py-2">
+                            <i class="fa-solid fa-file-excel mr-1"></i>Export
+                        </button>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-slate-100 text-slate-600 text-xs font-semibold uppercase">
+                            <tr>
+                                <th class="py-3 px-4">Booking ID</th>
+                                <th class="py-3 px-4">Faculty</th>
+                                <th class="py-3 px-4">Studio</th>
+                                <th class="py-3 px-4">Slot Time</th>
+                                <th class="py-3 px-4">Course Details</th>
+                                <th class="py-3 px-4">Status</th>
+                                <th class="py-3 px-4">Duration</th>
+                                <th class="py-3 px-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adminBookingsTableBody" class="divide-y divide-slate-200"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB: NON-RECORDED AUDIT WITH DATE FILTER -->
+            <div id="adminTab-audit" class="admin-tab-content hidden space-y-4">
+                <div
+                    class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white p-4 rounded-2xl border border-slate-200">
+                    <div>
+                        <h2 class="text-base font-bold text-slate-800">Absence & Non-Recorded Priority Audit</h2>
+                        <p class="text-xs text-slate-500">Filter by specific date to check unfulfilled bookings and
+                            submitted reasons</p>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <label class="text-xs font-bold text-slate-600">Select Date:</label>
+                        <input type="date" id="auditFilterDate" onchange="renderAdminAuditTable()"
+                            class="form-input text-xs w-36 py-1.5" />
+                        <button onclick="clearAuditDateFilter()" class="btn-secondary text-xs py-1.5 px-2.5">Show All
+                            Dates</button>
+                        <button onclick="triggerUniversalExport('audit')" class="btn-success text-xs py-1.5">
+                            <i class="fa-solid fa-file-excel mr-1"></i>Export
+                        </button>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-rose-50 text-rose-800 text-xs font-semibold uppercase">
+                            <tr>
+                                <th class="py-3 px-4">Date</th>
+                                <th class="py-3 px-4">Faculty Name (ID)</th>
+                                <th class="py-3 px-4">Studio</th>
+                                <th class="py-3 px-4">Scheduled Slot</th>
+                                <th class="py-3 px-4">Course Info</th>
+                                <th class="py-3 px-4">Status</th>
+                                <th class="py-3 px-4">Official Reason / Remarks</th>
+                            </tr>
+                        </thead>
+                        <tbody id="adminAuditTableBody" class="divide-y divide-slate-200"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB: STUDIOS -->
+            <div id="adminTab-studios" class="admin-tab-content hidden space-y-4">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-base font-bold text-slate-800">Recording Studios</h2>
+                    <button onclick="openStudioModal()" class="btn-primary"><i class="fa-solid fa-plus mr-1.5"></i>Add
+                        Studio</button>
+                </div>
+                <div id="studiosGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+            </div>
+
+            <!-- TAB: OPERATORS -->
+            <div id="adminTab-operators" class="admin-tab-content hidden space-y-4">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-base font-bold text-slate-800">Studio Incharges</h2>
+                    <button onclick="openOperatorModal()" class="btn-primary"><i class="fa-solid fa-plus mr-1.5"></i>Add
+                        Studio Incharge</button>
+                </div>
+                <div class="table-container">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-slate-100 text-slate-600 text-xs font-semibold uppercase">
+                            <tr>
+                                <th class="py-3 px-4">ID</th>
+                                <th class="py-3 px-4">Name</th>
+                                <th class="py-3 px-4">Assigned Studio</th>
+                                <th class="py-3 px-4">Login Username</th>
+                                <th class="py-3 px-4">Contact</th>
+                                <th class="py-3 px-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="operatorsTableBody" class="divide-y divide-slate-200"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB: FACULTY -->
+            <div id="adminTab-faculty" class="admin-tab-content hidden space-y-4">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-base font-bold text-slate-800">Faculty Members</h2>
+                    <button onclick="openFacultyModal()" class="btn-primary"><i
+                            class="fa-solid fa-user-plus mr-1.5"></i>Add Faculty Member</button>
+                </div>
+                <div class="table-container">
+                    <table class="w-full text-left text-sm">
+                        <thead class="bg-slate-100 text-slate-600 text-xs font-semibold uppercase">
+                            <tr>
+                                <th class="py-3 px-4">Faculty ID</th>
+                                <th class="py-3 px-4">Name</th>
+                                <th class="py-3 px-4">Department</th>
+                                <th class="py-3 px-4">Login Username</th>
+                                <th class="py-3 px-4">Email</th>
+                                <th class="py-3 px-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="facultyTableBody" class="divide-y divide-slate-200"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== 2. FACULTY PORTAL ==================== -->
+        <section id="panel-faculty" class="hidden space-y-6">
+            <div
+                class="bg-gradient-to-r from-emerald-700 via-teal-800 to-emerald-900 p-5 rounded-2xl text-white shadow-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                    <h2 id="facultyWelcomeName" class="text-xl font-black">Welcome Faculty Member</h2>
+                    <p class="text-emerald-200 text-xs mt-0.5">Check real-time studio availability, reserve slots, and
+                        track video recordings.</p>
+                </div>
+                <button onclick="triggerUniversalExport('faculty')" class="btn-success text-xs py-2 portal-faculty-btn">
+                    <i class="fa-solid fa-file-excel mr-1.5"></i>Export My Schedule
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <!-- Booking Form -->
+                <div class="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-calendar-plus text-emerald-600"></i>Book Studio Slot
+                    </h3>
+                    <form id="bookingForm" onsubmit="handleSlotBooking(event)" class="space-y-3">
+                        <div>
+                            <label class="form-label">Studio *</label>
+                            <select id="bookStudioId" required class="form-input"
+                                onchange="checkSlotAvailability()"></select>
+                        </div>
+                        <div>
+                            <label class="form-label">Booking Date *</label>
+                            <input type="date" id="bookDate" required class="form-input"
+                                onchange="checkSlotAvailability()" />
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="form-label">Start Time *</label>
+                                <input type="time" id="bookStartTime" required class="form-input"
+                                    onchange="checkSlotAvailability()" />
+                            </div>
+                            <div>
+                                <label class="form-label">End Time *</label>
+                                <input type="time" id="bookEndTime" required class="form-input"
+                                    onchange="checkSlotAvailability()" />
+                            </div>
+                        </div>
+
+                        <div id="availabilityNotice" class="text-xs p-3 rounded-xl hidden"></div>
+
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="form-label">Course Code *</label>
+                                <input type="text" id="bookCourseCode" placeholder="e.g. CSE401" required
+                                    class="form-input uppercase" />
+                            </div>
+                            <div>
+                                <label class="form-label">Unit No *</label>
+                                <input type="text" id="bookUnitNo" placeholder="e.g. Unit 2" required
+                                    class="form-input" />
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="form-label">Lecture No *</label>
+                                <input type="text" id="bookLecNo" placeholder="e.g. Lec 04" required
+                                    class="form-input" />
+                            </div>
+                            <div>
+                                <label class="form-label">Topic Title</label>
+                                <input type="text" id="bookTopic" placeholder="e.g. B-Trees" class="form-input" />
+                            </div>
+                        </div>
+                        <button type="submit" id="submitBookingBtn"
+                            class="w-full btn-primary justify-center py-2.5 text-sm portal-faculty-btn">
+                            <i class="fa-solid fa-paper-plane mr-2"></i>Submit Booking Request
+                        </button>
+                    </form>
+
+                    <div class="pt-3 border-t border-slate-100">
+                        <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Occupied Hours for
+                            Studio</h4>
+                        <div id="dayTimelineSlots" class="space-y-1.5 max-h-40 overflow-y-auto pr-1"></div>
+                    </div>
+                </div>
+
+                <!-- Faculty Slot Reservations with Date Picker Filter -->
+                <div class="lg:col-span-7 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <div
+                        class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-3 border-b border-slate-100">
+                        <div>
+                            <h3 class="text-base font-bold text-slate-800">My Slot Reservations</h3>
+                            <p class="text-xs text-slate-400">Filter recordings by specific date or view entire schedule
+                            </p>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <input type="date" id="facultyFilterDate" onchange="renderFacultyReservations()"
+                                class="form-input text-xs py-1.5 w-36" />
+                            <button onclick="clearFacultyDateFilter()"
+                                class="btn-secondary text-[11px] py-1.5 px-2">Show All</button>
+                        </div>
+                    </div>
+                    <div id="facultyBookingsList" class="space-y-3"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== 3. STUDIO OPERATOR CONSOLE ==================== -->
+        <section id="panel-operator" class="hidden space-y-6">
+            <div
+                class="bg-gradient-to-r from-slate-900 via-amber-950/40 to-slate-900 border border-amber-500/20 p-5 rounded-2xl text-white shadow-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                    <h2 id="operatorWelcomeTitle" class="text-xl font-black">Studio Recording Console</h2>
+                    <p id="operatorAssignedStudioText" class="text-amber-200/80 text-xs mt-0.5">Assigned Studio</p>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <button onclick="triggerUniversalExport('operator')"
+                        class="btn-success text-xs py-1.5 portal-operator-btn">
+                        <i class="fa-solid fa-file-excel mr-1"></i>Export Schedule
+                    </button>
+                </div>
+            </div>
+
+            <div
+                class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-3">
+                <div class="w-full sm:w-2/3 relative">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3.5 text-slate-400"></i>
+                    <input type="text" id="operatorSearchInput" oninput="renderOperatorConsole()"
+                        placeholder="Search by Faculty ID, Name, or Course Code..." class="form-input pl-10" />
+                </div>
+                <div class="flex items-center space-x-2 w-full sm:w-auto">
+                    <span class="text-xs font-bold text-slate-500">Date:</span>
+                    <input type="date" id="operatorDateFilter" onchange="renderOperatorConsole()"
+                        class="form-input text-xs py-1.5 w-36" />
+                    <button onclick="clearOperatorDateFilter()"
+                        class="btn-secondary text-[11px] py-1.5 px-2">All</button>
+                </div>
+            </div>
+
+            <div class="space-y-4">
+                <h3 class="text-base font-bold text-slate-800">Studio Schedule & Recording Controller</h3>
+                <div id="operatorSlotsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+            </div>
+        </section>
+    </main>
+
+    <!-- ==================== MODALS ==================== -->
+
+    <!-- UNIVERSAL EXPORT MODAL -->
+    <div id="exportModal" class="modal-backdrop hidden">
+        <div class="modal-card">
+            <div class="flex justify-between items-center pb-3 border-b">
+                <h3 class="text-base font-bold text-slate-800"><i
+                        class="fa-solid fa-file-excel text-emerald-600 mr-2"></i>Export Schedule Report</h3>
+                <button onclick="closeModal('exportModal')"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="space-y-4 pt-4 text-xs">
+                <div>
+                    <label class="form-label">Export Preset Period</label>
+                    <select id="exportFilterType" onchange="handleExportPresetChange(this.value)" class="form-input">
+                        <option value="today">Today's Slots Only</option>
+                        <option value="weekly">This Week</option>
+                        <option value="monthly">This Month</option>
+                        <option value="custom">Custom Date Range</option>
+                        <option value="all">All Lifetime Records</option>
+                    </select>
+                </div>
+                <div id="exportCustomRangeContainer" class="hidden grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="form-label">Start Date</label>
+                        <input type="date" id="exportStartDate" class="form-input" />
+                    </div>
+                    <div>
+                        <label class="form-label">End Date</label>
+                        <input type="date" id="exportEndDate" class="form-input" />
+                    </div>
+                </div>
+                <div id="exportStudioContainer">
+                    <label class="form-label">Studio Filter</label>
+                    <select id="exportStudioFilter" class="form-input">
+                        <option value="ALL">All Studios</option>
+                    </select>
+                </div>
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" onclick="closeModal('exportModal')" class="btn-secondary">Cancel</button>
+                    <button type="button" onclick="executeExportDownload()" class="btn-success">Download .xlsx</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- REMARK MODAL FOR MISSED RECORDINGS -->
+    <div id="remarkModal" class="modal-backdrop hidden">
+        <div class="modal-card">
+            <div class="flex justify-between items-center pb-3 border-b">
+                <h3 class="text-base font-bold text-rose-700"><i class="fa-solid fa-triangle-exclamation mr-1.5"></i>Log
+                    Non-Recording Remark</h3>
+                <button onclick="closeModal('remarkModal')"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form onsubmit="handleSaveRemark(event)" class="space-y-3 pt-3">
+                <input type="hidden" id="remarkBookingId" />
+                <p class="text-xs text-slate-500">This faculty member did not record during their scheduled slot. Enter
+                    the official priority reason for administrative compliance.</p>
+                <div>
+                    <label class="form-label">Priority Reason / Remark *</label>
+                    <textarea id="remarkText" required rows="3" class="form-input"
+                        placeholder="e.g., Faculty medical leave / Urgent class adjustment / Camera maintenance"></textarea>
+                </div>
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" onclick="closeModal('remarkModal')" class="btn-secondary">Cancel</button>
+                    <button type="submit" class="btn-danger">Submit Reason</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ADMIN EDIT SLOT MODAL -->
+    <div id="editSlotModal" class="modal-backdrop hidden">
+        <div class="modal-card">
+            <div class="flex justify-between items-center pb-3 border-b">
+                <h3 class="text-base font-bold text-slate-800">Modify / Reschedule Slot</h3>
+                <button onclick="closeModal('editSlotModal')"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form onsubmit="handleSaveEditedSlot(event)" class="space-y-3 pt-3">
+                <input type="hidden" id="editBookingId" />
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="form-label">Date *</label>
+                        <input type="date" id="editSlotDate" required class="form-input" />
+                    </div>
+                    <div>
+                        <label class="form-label">Studio *</label>
+                        <select id="editSlotStudio" required class="form-input"></select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="form-label">Start Time *</label>
+                        <input type="time" id="editSlotStart" required class="form-input" />
+                    </div>
+                    <div>
+                        <label class="form-label">End Time *</label>
+                        <input type="time" id="editSlotEnd" required class="form-input" />
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="form-label">Course Code *</label>
+                        <input type="text" id="editSlotCourse" required class="form-input uppercase" />
+                    </div>
+                    <div>
+                        <label class="form-label">Status</label>
+                        <select id="editSlotStatus" class="form-input">
+                            <option value="Pending">Pending</option>
+                            <option value="Approved">Approved</option>
+                            <option value="In-Progress">In-Progress</option>
+                            <option value="Completed">Completed</option>
+                            <option value="Not-Recorded">Not-Recorded</option>
+                            <option value="Rejected">Rejected</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex justify-between pt-2">
+                    <button type="button" onclick="deleteEditedSlot()" class="btn-danger"><i
+                            class="fa-solid fa-trash mr-1"></i>Delete</button>
+                    <div class="space-x-2">
+                        <button type="button" onclick="closeModal('editSlotModal')"
+                            class="btn-secondary">Cancel</button>
+                        <button type="submit" class="btn-primary">Update Slot</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- STUDIO MODAL -->
+    <div id="studioModal" class="modal-backdrop hidden">
+        <div class="modal-card">
+            <div class="flex justify-between items-center pb-3 border-b">
+                <h3 id="studioModalTitle" class="text-base font-bold text-slate-800">Add Recording Studio</h3>
+                <button onclick="closeModal('studioModal')"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form onsubmit="handleSaveStudio(event)" class="space-y-3 pt-3">
+                <input type="hidden" id="modalStudioId" />
+                <div>
+                    <label class="form-label">Studio Name *</label>
+                    <input type="text" id="modalStudioName" required class="form-input"
+                        placeholder="e.g. Green Chroma Studio A" />
+                </div>
+                <div>
+                    <label class="form-label">Location *</label>
+                    <input type="text" id="modalStudioLocation" required class="form-input"
+                        placeholder="e.g. Block 34, Floor 2" />
+                </div>
+                <div>
+                    <label class="form-label">Assign Incharge</label>
+                    <select id="modalStudioOperator" class="form-input"></select>
+                </div>
+                <div>
+                    <label class="form-label">Status</label>
+                    <select id="modalStudioStatus" class="form-input">
+                        <option value="Active">Active</option>
+                        <option value="Maintenance">Maintenance</option>
+                    </select>
+                </div>
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" onclick="closeModal('studioModal')" class="btn-secondary">Cancel</button>
+                    <button type="submit" class="btn-primary">Save Studio</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- OPERATOR MODAL -->
+    <div id="operatorModal" class="modal-backdrop hidden">
+        <div class="modal-card">
+            <div class="flex justify-between items-center pb-3 border-b">
+                <h3 id="operatorModalTitle" class="text-base font-bold text-slate-800">Add Studio Incharge</h3>
+                <button onclick="closeModal('operatorModal')"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form onsubmit="handleSaveOperator(event)" class="space-y-3 pt-3">
+                <input type="hidden" id="modalOpId" />
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="form-label">Full Name *</label>
+                        <input type="text" id="modalOpName" required class="form-input" />
+                    </div>
+                    <div>
+                        <label class="form-label">Assigned Studio</label>
+                        <select id="modalOpStudio" class="form-input"></select>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="form-label">Email *</label>
+                        <input type="email" id="modalOpEmail" required class="form-input" />
+                    </div>
+                    <div>
+                        <label class="form-label">Phone *</label>
+                        <input type="text" id="modalOpPhone" required class="form-input" />
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="form-label">Login Username *</label>
+                        <input type="text" id="modalOpUsername" required class="form-input font-mono" />
+                    </div>
+                    <div>
+                        <label class="form-label">Login Password *</label>
+                        <input type="password" id="modalOpPassword" required minlength="6"
+                            class="form-input font-mono" />
+                    </div>
+                </div>
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" onclick="closeModal('operatorModal')" class="btn-secondary">Cancel</button>
+                    <button type="submit" class="btn-primary">Save Incharge</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- FACULTY MODAL -->
+    <div id="facultyModal" class="modal-backdrop hidden">
+        <div class="modal-card">
+            <div class="flex justify-between items-center pb-3 border-b">
+                <h3 id="facultyModalTitle" class="text-base font-bold text-slate-800">Add Faculty Member</h3>
+                <button onclick="closeModal('facultyModal')"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form onsubmit="handleSaveFaculty(event)" class="space-y-3 pt-3">
+                <input type="hidden" id="modalFacId" />
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="form-label">Full Name *</label>
+                        <input type="text" id="modalFacName" required class="form-input" />
+                    </div>
+                    <div>
+                        <label class="form-label">Department *</label>
+                        <input type="text" id="modalFacDept" required class="form-input" />
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="form-label">Email *</label>
+                        <input type="email" id="modalFacEmail" required class="form-input" />
+                    </div>
+                    <div>
+                        <label class="form-label">Phone *</label>
+                        <input type="text" id="modalFacPhone" required class="form-input" />
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="form-label">Login Username *</label>
+                        <input type="text" id="modalFacUsername" required class="form-input font-mono" />
+                    </div>
+                    <div>
+                        <label class="form-label">Login Password *</label>
+                        <input type="password" id="modalFacPassword" required minlength="6"
+                            class="form-input font-mono" />
+                    </div>
+                </div>
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button type="button" onclick="closeModal('facultyModal')" class="btn-secondary">Cancel</button>
+                    <button type="submit" class="btn-primary">Save Faculty</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- NATIVE ATTIRE & CHROMA INSPECTOR MODAL -->
+    <div id="attireModal" class="modal-backdrop hidden">
+        <div
+            class="bg-slate-900 border border-slate-700 rounded-3xl max-w-3xl w-full flex flex-col shadow-2xl overflow-hidden">
+            <div class="p-3.5 bg-slate-950 border-b border-slate-800 flex justify-between items-center text-white">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-wand-magic-sparkles text-emerald-400"></i>
+                    <span class="font-bold text-sm">Faculty Attire & Chroma-Key Inspector</span>
+                </div>
+                <button onclick="closeAttireModal()" class="text-slate-400 hover:text-white px-2">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <div class="p-4 space-y-4">
+                <div
+                    class="relative aspect-video bg-black rounded-2xl overflow-hidden border border-slate-800 flex items-center justify-center">
+                    <video id="nativeCamVideo" class="hidden" playsinline autoplay muted></video>
+                    <canvas id="nativeDisplayCanvas" class="w-full h-full object-contain"></canvas>
+                    <div id="camStartScreen"
+                        class="absolute inset-0 flex flex-col items-center justify-center p-4 bg-slate-950/90 text-center">
+                        <i class="fa-solid fa-camera text-4xl text-cyan-400 mb-2"></i>
+                        <h3 class="text-sm font-bold text-white mb-1">Camera Sensor Ready</h3>
+                        <p class="text-xs text-slate-400 max-w-xs mb-3">Launch your camera to analyze fabric chroma-key
+                            clash and reflection risks.</p>
+                        <button onclick="startNativeCamera()" class="btn-primary"><i
+                                class="fa-solid fa-play mr-1.5"></i>Start Camera</button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                        <span class="text-slate-400 block text-[10px] uppercase font-bold">Readiness</span>
+                        <span id="nativeScore" class="text-lg font-black text-emerald-400">--%</span>
+                    </div>
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                        <span class="text-slate-400 block text-[10px] uppercase font-bold">Chroma Clash</span>
+                        <span id="nativeChromaStatus" class="font-bold text-emerald-400">CLEAN</span>
+                    </div>
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                        <span class="text-slate-400 block text-[10px] uppercase font-bold">Lighting</span>
+                        <span id="nativeLumaStatus" class="font-bold text-cyan-400">OPTIMAL</span>
+                    </div>
+                    <div class="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                        <span class="text-slate-400 block text-[10px] uppercase font-bold">Pattern Moiré</span>
+                        <span id="nativeMoireStatus" class="font-bold text-slate-300">SAFE</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
