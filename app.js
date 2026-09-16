@@ -1,5 +1,5 @@
 /**
- * UniStudio Front-end SPA Engine - Instant Optimistic CRUD & Full Stability
+ * UniStudio Front-end SPA Engine - Interactive Live Status & Admin Direct Booking
  */
 
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyKQyy-ZMhzCUNIdM2vDFK7-af3kZKkLF_Ev_T8r_Xe3P5Ong9FDr_Kh0ha-VZzOLXt/exec';
@@ -15,10 +15,11 @@ let db = {
 
 let authSession = JSON.parse(localStorage.getItem('unistudio_session') || 'null');
 let currentExportContext = 'admin';
+let liveTelemetryTimer = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   const today = getTodayDateStr();
-  const dateIds = ['bookDate', 'operatorDateFilter', 'facultyFilterDate', 'adminLiveDate', 'auditFilterDate', 'exportStartDate', 'exportEndDate'];
+  const dateIds = ['bookDate', 'operatorDateFilter', 'facultyFilterDate', 'adminLiveDate', 'auditFilterDate', 'adminBookDate', 'modalLiveDateSelect', 'exportStartDate', 'exportEndDate'];
   dateIds.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = today;
@@ -31,7 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
     showLoginView();
   }
 
-  // Periodic heartbeat sync
+  // Periodic heartbeat sync & clock updates
   setInterval(() => {
     if (authSession) fetchDatabase();
   }, 45000);
@@ -232,6 +233,7 @@ function switchAdminTab(tab) {
 
   if (tab === 'live') renderLiveStudioBoard();
   if (tab === 'bookings') renderAdminBookings();
+  if (tab === 'bookForFaculty') populateAdminBookForFacultyForm();
   if (tab === 'audit') renderAdminAuditTable();
   if (tab === 'studios') renderAdminStudios();
   if (tab === 'operators') renderAdminOperators();
@@ -254,6 +256,7 @@ function refreshAdminUI() {
   renderAdminStudios();
   renderAdminOperators();
   renderAdminFaculty();
+  populateAdminBookForFacultyForm();
 }
 
 function renderLiveStudioBoard() {
@@ -373,6 +376,109 @@ function renderAdminBookings() {
     `;
     tbody.appendChild(tr);
   });
+}
+
+// ADMIN DIRECT BOOKING FOR REGISTERED FACULTY
+function populateAdminBookForFacultyForm() {
+  const facultySelect = document.getElementById('adminBookFacultySelect');
+  const studioSelect = document.getElementById('adminBookStudioId');
+  if (!facultySelect || !studioSelect) return;
+
+  facultySelect.innerHTML = '<option value="">-- Choose Registered Faculty --</option>';
+  db.faculty.forEach(f => {
+    const opt = document.createElement('option');
+    opt.value = f.FacultyID;
+    opt.innerText = `${f.Name} (${f.FacultyID} - ${f.Department})`;
+    facultySelect.appendChild(opt);
+  });
+
+  studioSelect.innerHTML = '<option value="">-- Choose Studio Facility --</option>';
+  db.studios.filter(s => s.Status === 'Active').forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.StudioID;
+    opt.innerText = `${s.StudioName} (${s.Location})`;
+    studioSelect.appendChild(opt);
+  });
+}
+
+function checkAdminBookingAvailability() {
+  const studioId = document.getElementById('adminBookStudioId').value;
+  const date = document.getElementById('adminBookDate').value;
+  const startStr = document.getElementById('adminBookStartTime').value;
+  const endStr = document.getElementById('adminBookEndTime').value;
+  const notice = document.getElementById('adminBookingNotice');
+
+  if (!studioId || !date || !startStr || !endStr) {
+    notice.classList.add('hidden');
+    return true;
+  }
+
+  const reqStart = timeToMinutes(startStr);
+  const reqEnd = timeToMinutes(endStr);
+
+  if (reqEnd <= reqStart) {
+    notice.className = 'text-xs p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 font-semibold';
+    notice.innerHTML = `<i class="fa-solid fa-circle-exclamation mr-1.5"></i> End time must be after start time.`;
+    notice.classList.remove('hidden');
+    return false;
+  }
+
+  const conflict = db.bookings.find(b => {
+    if (String(b.StudioID).trim() !== String(studioId).trim() || formatDateStr(b.Date) !== formatDateStr(date) || b.Status === 'Rejected') return false;
+    return Math.max(reqStart, timeToMinutes(b.StartTime)) < Math.min(reqEnd, timeToMinutes(b.EndTime));
+  });
+
+  if (conflict) {
+    notice.className = 'text-xs p-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-700 font-bold';
+    notice.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1.5"></i> UNAVAILABLE: Studio already occupied by <strong>${conflict.FacultyName}</strong> (${cleanTimeStr(conflict.StartTime)} - ${cleanTimeStr(conflict.EndTime)}) [${conflict.Status}].`;
+    notice.classList.remove('hidden');
+    return false;
+  } else {
+    notice.className = 'text-xs p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-800 font-bold';
+    notice.innerHTML = `<i class="fa-solid fa-circle-check mr-1.5"></i> Studio interval is VACANT and ready for instant reservation!`;
+    notice.classList.remove('hidden');
+    return true;
+  }
+}
+
+async function handleAdminBookingForFaculty(e) {
+  e.preventDefault();
+  if (!checkAdminBookingAvailability()) return notify('Selected interval is already booked. Pick another time.', 'error');
+
+  const facultyId = document.getElementById('adminBookFacultySelect').value;
+  const facultyObj = db.faculty.find(f => String(f.FacultyID).trim() === String(facultyId).trim());
+  if (!facultyObj) return notify('Please select a valid registered faculty member', 'error');
+
+  const payload = {
+    BookingID: 'BKG-' + new Date().getTime().toString().slice(-6),
+    FacultyID: facultyObj.FacultyID,
+    FacultyName: facultyObj.Name,
+    StudioID: document.getElementById('adminBookStudioId').value,
+    Date: document.getElementById('adminBookDate').value,
+    StartTime: document.getElementById('adminBookStartTime').value,
+    EndTime: document.getElementById('adminBookEndTime').value,
+    CourseCode: document.getElementById('adminBookCourseCode').value.trim().toUpperCase(),
+    UnitNo: document.getElementById('adminBookUnitNo').value.trim(),
+    LectureNo: document.getElementById('adminBookLecNo').value.trim(),
+    Topic: document.getElementById('adminBookTopic').value.trim(),
+    Status: 'Approved', // Auto-approved because admin booked it
+    ActualStartTime: '',
+    ActualEndTime: '',
+    DurationMinutes: 0,
+    Remarks: ''
+  };
+
+  db.bookings.push(payload);
+  persistCache();
+  refreshAdminUI();
+
+  document.getElementById('adminBookingForm').reset();
+  document.getElementById('adminBookingNotice').classList.add('hidden');
+  switchAdminTab('bookings');
+
+  await postApi('createBooking', payload);
+  await postApi('updateBookingStatus', { bookingId: payload.BookingID, status: 'Approved' });
+  notify(`Slot successfully reserved & approved for ${facultyObj.Name}!`, 'success');
 }
 
 // NON-RECORDED AUDIT WITH CALENDAR DATE FILTER
@@ -636,6 +742,7 @@ async function handleSlotBooking(e) {
 
   const currentFaculty = db.faculty.find(f => String(f.FacultyID).trim() === String(authSession.RefID).trim() || String(f.Username).trim() === String(authSession.Username).trim());
   const payload = {
+    BookingID: 'BKG-' + new Date().getTime().toString().slice(-6),
     FacultyID: currentFaculty ? currentFaculty.FacultyID : authSession.RefID,
     FacultyName: currentFaculty ? currentFaculty.Name : authSession.Username,
     StudioID: document.getElementById('bookStudioId').value,
@@ -645,8 +752,17 @@ async function handleSlotBooking(e) {
     CourseCode: document.getElementById('bookCourseCode').value.trim().toUpperCase(),
     UnitNo: document.getElementById('bookUnitNo').value.trim(),
     LectureNo: document.getElementById('bookLecNo').value.trim(),
-    Topic: document.getElementById('bookTopic').value.trim()
+    Topic: document.getElementById('bookTopic').value.trim(),
+    Status: 'Pending',
+    ActualStartTime: '',
+    ActualEndTime: '',
+    DurationMinutes: 0,
+    Remarks: ''
   };
+
+  db.bookings.push(payload);
+  persistCache();
+  refreshFacultyUI();
 
   document.getElementById('bookingForm').reset();
   await postApi('createBooking', payload);
@@ -778,6 +894,174 @@ async function triggerFinishRecording(bookingId, startTimeStr) {
   notify(`Session completed! Duration: ${duration} minutes.`, 'success');
 }
 
+// ---------------- INTERACTIVE LIVE STATUS MODAL (FACULTY & ADMIN) ----------------
+
+function openLiveStatusModal() {
+  const studioSelect = document.getElementById('modalLiveStudioSelect');
+  const dateInput = document.getElementById('modalLiveDateSelect');
+  dateInput.value = getTodayDateStr();
+
+  studioSelect.innerHTML = '';
+  db.studios.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.StudioID;
+    opt.innerText = `${s.StudioName} (${s.Location})`;
+    studioSelect.appendChild(opt);
+  });
+
+  document.getElementById('liveStatusModal').classList.remove('hidden');
+  renderModalLiveQueue();
+
+  if (liveTelemetryTimer) clearInterval(liveTelemetryTimer);
+  liveTelemetryTimer = setInterval(updateLiveRecordingTelemetry, 1000);
+}
+
+function closeLiveStatusModal() {
+  document.getElementById('liveStatusModal').classList.add('hidden');
+  if (liveTelemetryTimer) {
+    clearInterval(liveTelemetryTimer);
+    liveTelemetryTimer = null;
+  }
+}
+
+function renderModalLiveQueue() {
+  const studioId = document.getElementById('modalLiveStudioSelect').value;
+  const dateVal = document.getElementById('modalLiveDateSelect').value;
+  const banner = document.getElementById('modalLiveActiveBanner');
+  const container = document.getElementById('modalLiveQueueContainer');
+  const counter = document.getElementById('modalLiveQueueCounter');
+
+  if (!studioId) return;
+
+  const studioObj = db.studios.find(s => String(s.StudioID).trim() === String(studioId).trim()) || { StudioName: studioId };
+  const dayBookings = db.bookings.filter(b => String(b.StudioID).trim() === String(studioId).trim() && formatDateStr(b.Date) === dateVal && b.Status !== 'Rejected');
+  dayBookings.sort((a, b) => timeToMinutes(a.StartTime) - timeToMinutes(b.StartTime));
+
+  counter.innerText = `${dayBookings.length} Slots`;
+
+  // Find active In-Progress recording
+  const activeSession = dayBookings.find(b => b.Status === 'In-Progress');
+  if (activeSession) {
+    banner.className = 'block p-5 bg-gradient-to-r from-rose-600 via-red-600 to-rose-700 text-white rounded-2xl shadow-xl live-radar-box border border-rose-400/50';
+    banner.innerHTML = `
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-black bg-white text-rose-700 uppercase tracking-wider animate-pulse">
+              <i class="fa-solid fa-circle text-rose-600 mr-1.5 text-[9px]"></i>ON AIR RECORDING NOW
+            </span>
+            <span class="text-xs font-mono opacity-80">${activeSession.BookingID}</span>
+          </div>
+          <h3 class="text-xl font-black mt-1">${activeSession.FacultyName}</h3>
+          <p class="text-xs text-rose-100 font-semibold">${activeSession.CourseCode} • ${activeSession.UnitNo} (${activeSession.LectureNo}) - ${activeSession.Topic || 'Topic In Progress'}</p>
+        </div>
+        <div class="bg-black/30 backdrop-blur-md px-4 py-2.5 rounded-xl border border-white/10 text-right">
+          <div class="text-[10px] font-mono uppercase tracking-widest text-rose-200">Recording Telemetry</div>
+          <div id="liveTelemetryElapsed" data-starttime="${activeSession.ActualStartTime}" class="text-2xl font-black font-mono tracking-tight text-white mt-0.5">
+            Calculating...
+          </div>
+          <div class="text-[10px] text-rose-200 mt-0.5">Started at: ${cleanTimeStr(activeSession.ActualStartTime)}</div>
+        </div>
+      </div>
+    `;
+  } else {
+    banner.className = 'block p-4 bg-slate-100 border border-slate-200 rounded-2xl text-slate-600 text-xs font-medium flex items-center justify-between';
+    banner.innerHTML = `
+      <div class="flex items-center space-x-2">
+        <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
+        <span>Studio <strong>${studioObj.StudioName}</strong> is currently <strong>IDLE / VACANT</strong>. No live recording active at this moment.</span>
+      </div>
+      <span class="px-2.5 py-1 rounded-lg bg-white border font-bold text-slate-700">${dateVal}</span>
+    `;
+  }
+
+  container.innerHTML = '';
+  if (dayBookings.length === 0) {
+    container.innerHTML = `<div class="p-8 text-center text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-2xl text-xs">No scheduled lecture recordings for this studio on ${dateVal}.</div>`;
+    return;
+  }
+
+  dayBookings.forEach(b => {
+    let statusTheme = '';
+    let statusIcon = '';
+    let badgeText = b.Status;
+
+    if (b.Status === 'In-Progress') {
+      statusTheme = 'bg-rose-50 border-rose-300 text-rose-950 shadow';
+      statusIcon = '<i class="fa-solid fa-tower-broadcast text-rose-600 animate-pulse text-base"></i>';
+      badgeText = 'RECORDING NOW';
+    } else if (b.Status === 'Completed') {
+      statusTheme = 'bg-emerald-50 border-emerald-200 text-emerald-950';
+      statusIcon = '<i class="fa-solid fa-circle-check text-emerald-600 text-base"></i>';
+      badgeText = `COMPLETED (${b.DurationMinutes}m)`;
+    } else if (b.Status === 'Approved') {
+      statusTheme = 'bg-amber-50 border-amber-200 text-amber-950';
+      statusIcon = '<i class="fa-solid fa-clock text-amber-500 text-base"></i>';
+      badgeText = 'IN QUEUE';
+    } else if (b.Status === 'Not-Recorded') {
+      statusTheme = 'bg-rose-50 border-rose-200 text-rose-900';
+      statusIcon = '<i class="fa-solid fa-circle-xmark text-rose-500 text-base"></i>';
+      badgeText = 'NOT RECORDED';
+    } else {
+      statusTheme = 'bg-slate-50 border-slate-200 text-slate-700';
+      statusIcon = '<i class="fa-solid fa-hourglass-start text-slate-400 text-base"></i>';
+      badgeText = 'PENDING APPROVAL';
+    }
+
+    const card = document.createElement('div');
+    card.className = `p-4 rounded-2xl border transition hover:shadow-md flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 ${statusTheme}`;
+    card.innerHTML = `
+      <div class="flex items-start space-x-3">
+        <div class="mt-1">${statusIcon}</div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="font-bold text-sm text-slate-800">${b.FacultyName}</span>
+            <span class="text-xs font-mono text-slate-400 font-semibold">${b.FacultyID}</span>
+          </div>
+          <div class="text-xs font-bold text-indigo-800 mt-0.5">
+            ${b.CourseCode} • ${b.UnitNo} (${b.LectureNo}) ${b.Topic ? ` - <span class="font-normal text-slate-600">${b.Topic}</span>` : ''}
+          </div>
+          ${b.Remarks ? `<div class="text-[11px] text-rose-700 font-semibold mt-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i>${b.Remarks}</div>` : ''}
+        </div>
+      </div>
+      <div class="flex flex-col sm:items-end w-full sm:w-auto">
+        <span class="px-2.5 py-1 rounded-full text-xs font-black uppercase tracking-wider ${b.Status === 'In-Progress' ? 'bg-rose-600 text-white animate-pulse' : b.Status === 'Completed' ? 'bg-emerald-600 text-white' : 'bg-amber-100 text-amber-800 border border-amber-300'}">
+          ${badgeText}
+        </span>
+        <div class="text-xs font-mono font-bold text-slate-600 mt-1">
+          ${cleanTimeStr(b.StartTime)} - ${cleanTimeStr(b.EndTime)}
+        </div>
+        ${b.ActualStartTime ? `<div class="text-[10px] font-mono text-slate-400">Actual: ${cleanTimeStr(b.ActualStartTime)} - ${cleanTimeStr(b.ActualEndTime) || 'Active'}</div>` : ''}
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+function updateLiveRecordingTelemetry() {
+  const telemetryEl = document.getElementById('liveTelemetryElapsed');
+  if (!telemetryEl) return;
+  const startStr = telemetryEl.getAttribute('data-starttime');
+  if (!startStr) return;
+
+  const now = new Date();
+  const parts = startStr.split(':');
+  const startH = parseInt(parts[0], 10);
+  const startM = parseInt(parts[1], 10);
+
+  const startObj = new Date();
+  startObj.setHours(startH, startM, 0, 0);
+
+  let diffMs = now - startObj;
+  if (diffMs < 0) diffMs = 0;
+
+  const totalSec = Math.floor(diffMs / 1000);
+  const mins = Math.floor(totalSec / 60);
+  const secs = totalSec % 60;
+
+  telemetryEl.innerText = `${String(mins).padStart(2, '0')}m ${String(secs).padStart(2, '0')}s`;
+}
+
 // ---------------- REMARKS FOR MISSED RECORDINGS ----------------
 
 function openRemarkModal(bookingId) {
@@ -892,9 +1176,8 @@ function executeExportDownload() {
   notify('Report downloaded successfully!', 'success');
 }
 
-// ---------------- FULL OPTIMISTIC CRUD (EDIT & DELETE) ----------------
+// ---------------- CRUD UTILITIES (EDIT & DELETE) ----------------
 
-// STUDIO CRUD
 function openStudioModal() {
   document.getElementById('modalStudioId').value = '';
   document.getElementById('modalStudioName').value = '';
@@ -932,7 +1215,6 @@ async function handleSaveStudio(e) {
     Status: document.getElementById('modalStudioStatus').value
   };
 
-  // Optimistic UI Update
   const idx = db.studios.findIndex(s => String(s.StudioID).trim() === String(payload.StudioID).trim());
   if (idx !== -1) db.studios[idx] = payload;
   else db.studios.push(payload);
@@ -954,7 +1236,6 @@ async function deleteStudioRecord(id) {
   notify('Studio deleted successfully.', 'success');
 }
 
-// OPERATOR / INCHARGE CRUD
 function openOperatorModal() {
   document.getElementById('modalOpId').value = '';
   document.getElementById('modalOpName').value = '';
@@ -984,7 +1265,7 @@ function editOperator(id) {
   document.getElementById('modalOpPhone').value = op.Phone;
   document.getElementById('modalOpStudio').value = op.AssignedStudioID || '';
   document.getElementById('modalOpUsername').value = op.Username || (userAcc ? userAcc.Username : '');
-  document.getElementById('modalOpPassword').value = op.Password || (userAcc ? userAcc.Password : '');
+  document.getElementById('modalOpPassword').value = userAcc ? userAcc.Password : '';
 }
 
 async function handleSaveOperator(e) {
@@ -1023,7 +1304,6 @@ async function deleteOperatorRecord(id) {
   notify('Incharge deleted successfully.', 'success');
 }
 
-// FACULTY CRUD
 function openFacultyModal() {
   document.getElementById('modalFacId').value = '';
   document.getElementById('modalFacName').value = '';
@@ -1046,7 +1326,7 @@ function editFaculty(id) {
   document.getElementById('modalFacEmail').value = fac.Email;
   document.getElementById('modalFacPhone').value = fac.Phone;
   document.getElementById('modalFacUsername').value = fac.Username || (userAcc ? userAcc.Username : '');
-  document.getElementById('modalFacPassword').value = fac.Password || (userAcc ? userAcc.Password : '');
+  document.getElementById('modalFacPassword').value = userAcc ? userAcc.Password : '';
 }
 
 async function handleSaveFaculty(e) {
@@ -1085,7 +1365,6 @@ async function deleteFacultyRecord(id) {
   notify('Faculty member removed.', 'success');
 }
 
-// EDIT & DELETE BOOKING
 function openEditSlotModal(bookingId) {
   const b = db.bookings.find(item => String(item.BookingID).trim() === String(bookingId).trim());
   if (!b) return;
